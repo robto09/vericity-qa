@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Test reports
+report.html
+*.report.html
+
+# Env / secrets — NEVER commit credentials
+.env
+.env.*
+*.pem
+aws-credentials*
+
+# Node (newman)
+node_modules/
+
+# OS
+.DS_Store

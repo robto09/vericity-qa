@@ -1,0 +1,7 @@
+# QA framework dependencies.
+pytest>=8.0
+requests>=2.31          # HTTP client for API tests
+boto3>=1.34             # AWS SDK — read stack outputs, DynamoDB, SQS, EventBridge, SFN, logs
+jsonschema>=4.20        # validate event/response shapes against a schema
+psycopg2-binary>=2.9.9  # optional: direct RDS validation when network allows
+pytest-html>=4.1        # nice HTML test reports for handoff
