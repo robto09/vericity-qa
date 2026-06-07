@@ -1,0 +1,160 @@
+{
+  "info": {
+    "name": "Vericity Policy API",
+    "description": "API tests for the Vericity policy platform. Mirrors the PyTest API suite as a shareable, CI-runnable Postman collection (run with Newman). Set the {{base_url}} collection variable to the deployed ApiBaseUrl.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://REPLACE-ME.execute-api.us-east-1.amazonaws.com/dev",
+      "type": "string"
+    },
+    { "key": "policy_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Quote - valid (201)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/quotes", "host": ["{{base_url}}"], "path": ["quotes"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"applicant_age\": 35, \"coverage_amount\": 500000, \"term_years\": 20, \"tobacco_use\": false}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 201', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('has quote_id', () => pm.expect(body.quote_id).to.match(/^qte_/));",
+              "pm.test('premium correct for age35/500k/20yr (BR-2.5)', () => {",
+              "  pm.expect(body.annual_premium).to.eql(720);",
+              "  pm.expect(body.monthly_premium).to.eql(60);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quote - missing fields (400)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/quotes", "host": ["{{base_url}}"], "path": ["quotes"] },
+        "body": { "mode": "raw", "raw": "{}" }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 400', () => pm.response.to.have.status(400));",
+              "const body = pm.response.json();",
+              "pm.test('reports all 3 missing fields', () => pm.expect(body.details.length).to.eql(3));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quote - age below min (400)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/quotes", "host": ["{{base_url}}"], "path": ["quotes"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"applicant_age\": 17, \"coverage_amount\": 500000, \"term_years\": 20}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": ["pm.test('status is 400', () => pm.response.to.have.status(400));"],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Application - submit (201) and capture policy_id",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/applications", "host": ["{{base_url}}"], "path": ["applications"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"applicant_age\": 35, \"coverage_amount\": 500000, \"term_years\": 20, \"tobacco_use\": false, \"full_name\": \"Newman Test\", \"email\": \"newman@example.com\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 201', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('has policy_id', () => pm.expect(body.policy_id).to.match(/^pol_/));",
+              "pm.test('status is APPLIED', () => pm.expect(body.status).to.eql('APPLIED'));",
+              "pm.collectionVariables.set('policy_id', body.policy_id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get policy - by captured id (200)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/policies/{{policy_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["policies", "{{policy_id}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('returns our policy', () => pm.expect(body.policy_id).to.eql(pm.collectionVariables.get('policy_id')));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get policy - unknown id (404)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/policies/pol_does_not_exist",
+          "host": ["{{base_url}}"],
+          "path": ["policies", "pol_does_not_exist"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": ["pm.test('status is 404', () => pm.response.to.have.status(404));"],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

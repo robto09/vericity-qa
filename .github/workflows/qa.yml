@@ -1,0 +1,88 @@
+# CI workflow: run the QA suite against the deployed dev stack as a quality gate.
+#
+# Demonstrates "CI/CD pipelines and quality gates" — the suite runs on every push/PR
+# and on a schedule, failing the build if any contract or integration test regresses.
+#
+# Notes:
+#  - The fast (functional + integration) tests always run.
+#  - The slow async/event/workflow tests run on schedule / manual dispatch to keep PR
+#    feedback quick (they take several minutes against real AWS).
+#  - AWS credentials come from GitHub Actions secrets (never committed).
+
+name: QA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:        # manual run (lets you run the full slow suite on demand)
+  schedule:
+    - cron: "0 6 * * *"     # daily full run at 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  fast-tests:
+    name: Fast tests (functional + integration)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      - name: Preflight — verify the live stack is reachable (stack + RDS + API)
+        env:
+          VERICITY_STACK: vericity-dev
+        run: python -m framework.preflight
+      - name: Run fast tests (skip slow async/event/workflow)
+        env:
+          VERICITY_STACK: vericity-dev
+        run: pytest -m "not slow" --html=report-fast.html --self-contained-html
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-report-fast
+          path: report-fast.html
+
+  full-tests:
+    name: Full suite (incl. slow async/event/workflow)
+    # Only on schedule or manual dispatch — these take several minutes on real AWS.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      - name: Preflight — verify the live stack is reachable (stack + RDS + API)
+        env:
+          VERICITY_STACK: vericity-dev
+        run: python -m framework.preflight
+      - name: Run full suite
+        env:
+          VERICITY_STACK: vericity-dev
+        run: pytest --html=report-full.html --self-contained-html
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-report-full
+          path: report-full.html
