@@ -75,6 +75,41 @@ to hardcode. Override the target stack with `VERICITY_STACK` if needed.
 .venv/bin/pytest -m "not slow" --html=report.html --self-contained-html
 ```
 
+### All test groups (markers)
+
+Every group is runnable by its marker (`-m <marker>`) or by its folder (`tests/<folder>`).
+The two cross-cutting markers (`slow`, `rds`) span groups rather than naming one. List them
+live anytime with `pytest --markers`.
+
+| Group | Run by marker | Run by folder | What it covers |
+|-------|---------------|---------------|----------------|
+| Functional | `-m functional` | `tests/functional` | API behavior, validation, boundaries |
+| Integration | `-m integration` | `tests/integration` | API → DynamoDB persistence (service-to-service) |
+| Events | `-m events` | `tests/events` | EventBridge publish / schema / delivery / ordering |
+| Workflow | `-m workflow` | `tests/workflow` | Step Functions paths / retries / Catch fallback |
+| Async | `-m async_` | `tests/async` | SQS async / retries / DLQ / idempotency |
+| Data | `-m data` | `tests/data` | Cross-service integrity (DynamoDB ↔ S3 ↔ RDS) |
+| Pipeline | `-m pipeline` | `tests/pipeline` | Migration pipeline reconciliation |
+| Monitoring | `-m monitoring` | `tests/monitoring` | CloudWatch log / observability verification |
+
+Cross-cutting markers (combine with the above using `and` / `not`):
+
+| Marker | Purpose | Example |
+|--------|---------|---------|
+| `slow` | Tests that wait on real async propagation (tens of seconds to minutes) | `-m "not slow"` (fast iteration), `-m slow` (just the slow ones) |
+| `rds` | Tests needing direct network connectivity to RDS (skip when off-VPC, e.g. a laptop or CI runner) | `-m "not rds"` |
+
+> ⚠️ **The async marker is `async_` (trailing underscore)**, not `async` — `async` is a
+> Python reserved keyword, so the marker can't use it. The folder is still `tests/async`.
+
+Markers compose with boolean expressions, so you can target exactly what you want:
+
+```bash
+.venv/bin/pytest -m "events or workflow"        # two groups
+.venv/bin/pytest -m "integration and not slow"  # fast integration only
+.venv/bin/pytest -m pipeline                     # just the migration pipeline
+```
+
 > **Heads up — the slow tests are genuinely slow** (2-4 min each) because they wait on
 > real async propagation: EventBridge rules, Step Functions executions, SQS retries (the
 > DLQ test waits ~3 min for a message to exhaust retries). That's the cost of testing the
