@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pytest
 
+from framework.config import get_config
 from framework.data import get_policy_item
 from framework.logs import extract_json_context, find_log_events
 from framework.wait import wait_until
@@ -35,7 +36,7 @@ class TestUnderwritingObservability:
         # The risk_score Lambda must have logged the computed score for this policy —
         # proving the underwriting step is observable.
         messages = find_log_events(
-            "vericity-uw-risk-score-dev",
+            get_config().lambda_function_name("uw-risk-score"),
             f'"{policy_id}"',
             since_seconds=300,
             timeout_seconds=60,
@@ -64,7 +65,7 @@ class TestBillingObservability:
         # appears rather than reading once.
         def _our_billing_log():
             messages = find_log_events(
-                "vericity-billing-dev",
+                get_config().lambda_function_name("billing"),
                 '"First premium recorded"',
                 since_seconds=600,
                 timeout_seconds=10,

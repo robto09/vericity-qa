@@ -42,11 +42,20 @@ class StackConfig:
     batch_migration_state_machine_arn: str
     billing_db_endpoint: str
     db_secret_arn: str
+    stage: str
     region: str = AWS_REGION
 
+    def lambda_function_name(self, short_name: str) -> str:
+        """Return a platform Lambda's deployed name (template: vericity-<name>-<stage>).
 
-def _fetch_stack_outputs(stack_name: str, region: str) -> dict[str, str]:
-    """Return the deployed stack's Outputs as a {OutputKey: OutputValue} dict.
+        Used by tests that read CloudWatch logs, so the suite stays portable across
+        stages instead of hardcoding names like 'vericity-billing-dev'.
+        """
+        return f"vericity-{short_name}-{self.stage}"
+
+
+def _describe_stack(stack_name: str, region: str) -> dict[str, Any]:
+    """Return the deployed stack's describe-stacks entry (Outputs + Parameters).
 
     Raises a clear error if the stack isn't deployed — the most common reason a QA
     run fails to even start ("did you deploy + start RDS first?").
@@ -59,9 +68,7 @@ def _fetch_stack_outputs(stack_name: str, region: str) -> dict[str, str]:
             f"Cannot read stack '{stack_name}' in {region}: {error}. "
             f"Is it deployed? Run ../scripts/deploy.sh in the platform repo first."
         ) from error
-
-    outputs = response["Stacks"][0].get("Outputs", [])
-    return {item["OutputKey"]: item["OutputValue"] for item in outputs}
+    return response["Stacks"][0]
 
 
 @functools.lru_cache(maxsize=1)
@@ -70,7 +77,11 @@ def get_config() -> StackConfig:
 
     Cached so we hit CloudFormation once per run, not once per test.
     """
-    outputs = _fetch_stack_outputs(STACK_NAME, AWS_REGION)
+    stack = _describe_stack(STACK_NAME, AWS_REGION)
+    outputs = {item["OutputKey"]: item["OutputValue"] for item in stack.get("Outputs", [])}
+    parameters = {
+        item["ParameterKey"]: item["ParameterValue"] for item in stack.get("Parameters", [])
+    }
 
     # Helper to fetch a required output with a helpful error if it's missing
     # (e.g. the template changed and an Output was renamed).
@@ -95,4 +106,7 @@ def get_config() -> StackConfig:
         batch_migration_state_machine_arn=required("BatchMigrationStateMachineArn"),
         billing_db_endpoint=required("BillingDbEndpoint"),
         db_secret_arn=required("DbSecretArn"),
+        # The deployment stage drives resource naming (vericity-<name>-<stage>); read
+        # it from the stack's own parameters so nothing in the suite hardcodes "dev".
+        stage=parameters.get("Stage", "dev"),
     )

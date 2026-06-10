@@ -26,7 +26,11 @@ from framework.wait import wait_until
 
 pytestmark = [pytest.mark.pipeline, pytest.mark.slow]
 
-MIGRATION_FUNCTION = "vericity-migration-dev"
+
+def _migration_function() -> str:
+    """The migration Lambda's deployed name, derived from the stack's stage."""
+    return get_config().lambda_function_name("migration")
+
 
 # The sample legacy CSV: 10 rows, 7 clean, 3 dirty (per the platform's sample file +
 # BUSINESS_RULES BR-9). We upload our own copy so the test is self-contained.
@@ -61,7 +65,7 @@ class TestMigrationReconciliation:
         # Filter by our unique source key so we get THIS run's report.
         def _report():
             messages = find_log_events(
-                MIGRATION_FUNCTION,
+                _migration_function(),
                 f'"{key}"',
                 since_seconds=300,
                 timeout_seconds=10,
@@ -112,7 +116,7 @@ class TestMigrationReconciliation:
         # and crucially NO successful "Migrated legacy file" report for this key.
         time.sleep(20)  # let the trigger + Lambda run
         success_reports = find_log_events(
-            MIGRATION_FUNCTION, f'"{key}"', since_seconds=120, timeout_seconds=10
+            _migration_function(), f'"{key}"', since_seconds=120, timeout_seconds=10
         )
         reconciled = [
             m for m in success_reports
