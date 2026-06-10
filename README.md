@@ -37,12 +37,15 @@ error-handling · Monitoring / log verification.
 
 ## Prerequisites
 
-1. The platform stack must be **deployed** and **RDS running**:
+1. The platform stack must be **deployed** and — for the slow/full suite — **RDS running**:
    ```bash
    cd ..               # the platform repo
    ./scripts/deploy.sh          # if not already deployed
-   ./scripts/db-power.sh start   # if RDS is stopped
+   ./scripts/db-power.sh start   # if RDS is stopped (needed for the slow/full suite only)
    ```
+   The fast subset (`pytest -m "not slow"`) never touches the billing→RDS path, so it
+   runs fine with RDS stopped. Sanity-check the stack first with
+   `python -m framework.preflight` (add `--skip-rds` when RDS is intentionally paused).
 2. AWS credentials configured (`aws configure`) — the same ones used to deploy.
 
 ## Setup

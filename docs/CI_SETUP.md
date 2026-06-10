@@ -68,8 +68,9 @@ The tests need the platform stack **deployed** and **RDS started**.
   running, or (b) add a step to the workflow that starts RDS before the tests and stops it
   after (see snippet below).
 - **For push/PR runs:** the fast tests (`-m "not slow"`) avoid the billing→RDS path, so
-  they pass even if RDS is stopped — but the preflight currently requires RDS available.
-  If you want PR runs to work with RDS stopped, relax the preflight (see note below).
+  they pass even if RDS is stopped — and the fast-tests job runs the preflight with
+  `--skip-rds`, which demotes the RDS check to a warning. PR feedback therefore works
+  with RDS paused (the recommended between-sessions cost posture).
 
 ### Optional: start/stop RDS around the scheduled full run
 
@@ -87,11 +88,11 @@ window):
         run: aws rds stop-db-instance --db-instance-identifier vericity-billing-dev || true
 ```
 
-### Note: making PR runs tolerate stopped RDS
+### Note: PR runs already tolerate stopped RDS
 
-If you want fast PR runs while RDS is stopped, change the preflight call in the
-`fast-tests` job to skip the RDS check, or run `pytest -m "not slow"` without preflight
-(the fast tests don't touch RDS). The slow/full suite should always preflight RDS.
+The `fast-tests` job runs `python -m framework.preflight --skip-rds`, so a stopped RDS
+is reported as a warning instead of failing the job (the fast tests don't touch RDS).
+The slow/full suite keeps the strict preflight — it genuinely needs RDS available.
 
 ---
 

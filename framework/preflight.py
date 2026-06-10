@@ -4,6 +4,11 @@ Run as `python -m framework.preflight`. Exits 0 if the stack is deployed, RDS is
 available, and the API answers; non-zero with a clear message otherwise. This turns a
 pile of confusing mid-suite failures (when the stack is down or RDS is stopped) into one
 upfront, actionable error — both locally and in CI.
+
+Pass `--skip-rds` to demote the RDS check to a warning. The fast subset
+(`pytest -m "not slow"`) never touches the billing→RDS path, so it can run with RDS
+stopped (the recommended between-sessions cost posture) — only the slow/full suite
+genuinely needs RDS available.
 """
 from __future__ import annotations
 
@@ -15,7 +20,10 @@ from .aws import client
 from .config import STACK_NAME, get_config
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    arguments = sys.argv[1:] if argv is None else argv
+    skip_rds = "--skip-rds" in arguments
+
     print(f"Preflight: checking stack '{STACK_NAME}' ...")
 
     # 1. Stack outputs resolvable (stack deployed)?
@@ -27,6 +35,7 @@ def main() -> int:
     print(f"  stack outputs OK (API: {config.api_base_url})")
 
     # 2. RDS available? (billing/ACTIVE tests need it running, not stopped.)
+    # With --skip-rds this is a warning only — the fast subset doesn't touch RDS.
     try:
         rds = client("rds")
         # The DB identifier is derivable from the endpoint's first label.
@@ -35,15 +44,23 @@ def main() -> int:
             "DBInstances"
         ][0]["DBInstanceStatus"]
         if status != "available":
-            print(
-                f"FAIL: RDS '{db_id}' is '{status}', not 'available'. "
+            message = (
+                f"RDS '{db_id}' is '{status}', not 'available'. "
                 f"Start it: ../scripts/db-power.sh start"
             )
-            return 1
-        print(f"  RDS available ({db_id})")
+            if skip_rds:
+                print(f"  WARN (--skip-rds): {message}")
+            else:
+                print(f"FAIL: {message}")
+                return 1
+        else:
+            print(f"  RDS available ({db_id})")
     except Exception as error:  # noqa: BLE001
-        print(f"FAIL: cannot check RDS status: {error}")
-        return 1
+        if skip_rds:
+            print(f"  WARN (--skip-rds): cannot check RDS status: {error}")
+        else:
+            print(f"FAIL: cannot check RDS status: {error}")
+            return 1
 
     # 3. API actually answering? (A cheap, valid quote call.)
     try:

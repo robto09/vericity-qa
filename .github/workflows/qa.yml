@@ -39,10 +39,12 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-      - name: Preflight — verify the live stack is reachable (stack + RDS + API)
+      # The fast subset never touches the billing->RDS path, so a stopped RDS (the
+      # recommended between-sessions cost posture) must not block PR feedback.
+      - name: Preflight — verify the live stack is reachable (stack + API; RDS warn-only)
         env:
           VERICITY_STACK: vericity-dev
-        run: python -m framework.preflight
+        run: python -m framework.preflight --skip-rds
       - name: Run fast tests (skip slow async/event/workflow)
         env:
           VERICITY_STACK: vericity-dev
