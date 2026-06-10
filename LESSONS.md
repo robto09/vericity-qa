@@ -120,7 +120,10 @@ after every deploy.
 
 **Fix:** `framework/config.py` resolves the API URL, table names, queue URLs, and ARNs
 from the deployed **CloudFormation stack outputs** at runtime. The same suite runs against
-any environment by setting one env var (`VERICITY_STACK`).
+any environment by setting one env var (`VERICITY_STACK`). The same goes for Lambda
+function names used in log assertions: an early version hardcoded `vericity-billing-dev`
+etc., which silently searched the wrong log groups on any other stage — now
+`config.lambda_function_name()` derives them from the stack's own `Stage` parameter.
 
 **Takeaway:** *"Resolve environment specifics from infrastructure outputs at runtime so the
 same suite is portable across dev/prod without edits."*
@@ -166,6 +169,29 @@ tests on every push/PR for quick feedback; the full slow suite on a schedule / m
 **Takeaway:** *"Real integration tests against async infra are slow by nature — you're
 waiting on real retries and propagation. Separate fast feedback (unit/contract on every
 commit) from slow confidence (integration/E2E on a schedule) so neither blocks the other."*
+
+---
+
+## 11. Test probes must not look like real traffic
+
+**Symptom:** every events-suite run left junk behind: stray Step Functions executions
+ending in ManualReview, and garbage `probe-ready-…` rows in the policies table.
+
+**Cause:** the EventProbe's rule-is-live check (lesson 4) published its synthetic marker
+events using a **real** detail-type (e.g. `ApplicationSubmitted`) on the **real** bus. The
+probe's rule matched them — but so did the platform's own rules, so every marker also
+started a real underwriting execution with a junk payload. (And because DynamoDB's
+`update_item` upserts, the ManualReview fallback then *created* a policy row for the
+marker's fake id.)
+
+**Fix:** markers now use a QA-only detail-type (`QaProbeReady`) that no platform rule
+matches; the probe's rule subscribes to it *in addition to* the real detail-types under
+test. The probe also filters marker events out of what tests see, so
+`wait_for_events(count=...)` counts stay accurate.
+
+**Takeaway:** *"Synthetic test traffic on shared infrastructure must be distinguishable
+from real traffic — give probes their own event type/channel so verifying your test rig
+doesn't exercise (and pollute) the system under test."*
 
 ---
 
