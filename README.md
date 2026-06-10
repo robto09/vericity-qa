@@ -129,8 +129,15 @@ A Postman collection mirrors the API tests for a shareable, CLI-runnable suite:
 
 ## CI
 
-`.github/workflows/qa.yml` runs the fast tests on every push/PR (a quality gate) and the
-full suite on a daily schedule / manual dispatch. AWS creds come from repo secrets.
+**CI is currently switched off** — the workflow file is parked at
+`.github/workflows/qa.yml.disabled` so GitHub Actions never executes it (no push/PR
+runs, no daily schedule), and the workflow is also disabled in the repo's Actions
+settings. The suite is run locally instead (see "Running" above).
+
+To turn CI back on: rename the file back to `qa.yml`, push, and run
+`gh workflow enable QA`. It runs the fast tests on every push/PR and the full suite on
+a daily schedule / manual dispatch; AWS creds come from repo secrets (see
+[docs/CI_SETUP.md](docs/CI_SETUP.md)).
 
 ## Layout
 

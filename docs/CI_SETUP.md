@@ -1,8 +1,15 @@
 # CI Setup — making the QA suite run in GitHub Actions
 
-**Honest status:** the workflow file (`.github/workflows/qa.yml`) is ready, but CI won't
-actually run until you do three setup steps below. None require code changes, and **no
-other repo needs modifying** — the QA repo is self-contained.
+> **CI is currently switched OFF on purpose.** The workflow file is parked at
+> `.github/workflows/qa.yml.disabled` (GitHub only executes `.yml`/`.yaml` files in
+> `.github/workflows/`, so nothing triggers — no push/PR runs, no daily schedule), and
+> the workflow is additionally disabled in the repo's Actions settings. To re-enable:
+> `git mv .github/workflows/qa.yml.disabled .github/workflows/qa.yml`, push, then
+> `gh workflow enable QA --repo robto09/vericity-qa`.
+
+**Honest status:** the workflow file is ready, but CI won't actually run until you
+re-enable it (note above) and do the three setup steps below. None require code
+changes, and **no other repo needs modifying** — the QA repo is self-contained.
 
 ---
 
