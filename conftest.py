@@ -66,22 +66,31 @@ def seeded_policy():
     table = resource("dynamodb").Table(get_config().policies_table)
     created_ids: list[str] = []
 
-    def _create(age: int = 35, tobacco: bool = False, coverage: int = 250_000) -> str:
+    def _create(
+        age: int = 35,
+        tobacco: bool = False,
+        coverage: int = 250_000,
+        status: str = "APPLIED",
+        final_monthly_premium: str | None = None,
+    ) -> str:
         policy_id = generate_test_policy_id()
-        table.put_item(
-            Item={
-                "policy_id": policy_id,
-                "status": "APPLIED",
-                "applicant_age": age,
-                "coverage_amount": coverage,
-                "term_years": 20,
-                "tobacco_use": tobacco,
-                "full_name": "Workflow Test",
-                "email": "workflow@example.com",
-                "quoted_annual_premium": Decimal("0"),
-                "quoted_monthly_premium": Decimal("0"),
-            }
-        )
+        item: dict = {
+            "policy_id": policy_id,
+            "status": status,
+            "applicant_age": age,
+            "coverage_amount": coverage,
+            "term_years": 20,
+            "tobacco_use": tobacco,
+            "full_name": "Workflow Test",
+            "email": "workflow@example.com",
+            "quoted_annual_premium": Decimal("0"),
+            "quoted_monthly_premium": Decimal("0"),
+        }
+        # Billing tests seed mid-lifecycle (ISSUED) policies that already carry the
+        # final premium the billing consumer reads.
+        if final_monthly_premium is not None:
+            item["final_monthly_premium"] = final_monthly_premium
+        table.put_item(Item=item)
         created_ids.append(policy_id)
         return policy_id
 

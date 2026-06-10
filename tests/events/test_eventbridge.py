@@ -111,7 +111,10 @@ class TestEventOrdering:
             policy_id = api.create_application(applicant_age=30, tobacco_use=False)
             events = probe.collect(timeout_seconds=120)
 
-        # Build an ordered list of detail-types for OUR policy only.
+        # Build an ordered list of detail-types for OUR policy only. The envelope
+        # `time` field has ONE-SECOND granularity, so causally-adjacent events can tie;
+        # Python's sort is stable, so ties keep their queue-arrival order (the `events`
+        # list is in arrival order) — that tie-break is what keeps this deterministic.
         mine = [
             (e["detail-type"], e.get("time", ""))
             for e in events

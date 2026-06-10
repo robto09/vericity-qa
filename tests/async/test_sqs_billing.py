@@ -16,8 +16,6 @@ governed by the 60s visibility timeout, so DLQ landing can take a couple of minu
 """
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from framework.config import get_config
@@ -46,17 +44,10 @@ class TestAsyncBillingHappyPath:
     """A valid billing message is processed asynchronously and flips the policy ACTIVE."""
 
     def test_billing_message_marks_policy_active(self, seeded_policy):
-        # Seed an ISSUED policy, then drop a PolicyIssued message on the billing queue.
-        policy_id = seeded_policy()
+        # Seed an ISSUED policy (billing transitions ISSUED -> ACTIVE), then drop a
+        # PolicyIssued message on the billing queue.
+        policy_id = seeded_policy(status="ISSUED", final_monthly_premium="50.00")
         config = get_config()
-        # Put it in ISSUED state first (billing transitions ISSUED -> ACTIVE).
-        from framework.aws import resource
-        resource("dynamodb").Table(config.policies_table).update_item(
-            Key={"policy_id": policy_id},
-            UpdateExpression="SET #s = :s, final_monthly_premium = :p",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={":s": "ISSUED", ":p": "50.00"},
-        )
 
         send_message(config.billing_queue_url, _policy_issued_message(policy_id, "50.00"))
 
@@ -77,15 +68,8 @@ class TestIdempotency:
         # invariant: sending the same PolicyIssued twice still ends in exactly ACTIVE
         # (no error state, no regression) — and rely on the platform's ON CONFLICT
         # guard (unit-tested in the platform repo) for the ledger-row uniqueness.
-        policy_id = seeded_policy()
+        policy_id = seeded_policy(status="ISSUED", final_monthly_premium="75.00")
         config = get_config()
-        from framework.aws import resource
-        resource("dynamodb").Table(config.policies_table).update_item(
-            Key={"policy_id": policy_id},
-            UpdateExpression="SET #s = :s, final_monthly_premium = :p",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={":s": "ISSUED", ":p": "75.00"},
-        )
 
         message = _policy_issued_message(policy_id, "75.00")
         send_message(config.billing_queue_url, message)
@@ -120,7 +104,7 @@ class TestRetryAndDLQ:
             "garbage": poison_policy_id,
         }
 
-        send_message(config.billing_queue_url, json.dumps(poison) if isinstance(poison, str) else poison)
+        send_message(config.billing_queue_url, poison)
 
         # Wait for it to appear in the DLQ. maxReceiveCount=3 with a 60s visibility
         # timeout means up to ~3 minutes before it gives up to the DLQ.
