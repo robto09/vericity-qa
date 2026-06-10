@@ -33,6 +33,12 @@ from typing import Any
 from .aws import client
 from .config import get_config
 
+# Detail-type used ONLY for the probe's own rule-is-live marker events. It must never
+# collide with a real platform detail-type: markers are published onto the REAL bus, and
+# a real detail-type (e.g. ApplicationSubmitted) would ALSO match the platform's own
+# rules — starting junk Step Functions executions and writing probe-marker policy rows.
+PROBE_READY_DETAIL_TYPE = "QaProbeReady"
+
 
 class EventProbe:
     """Context manager that captures EventBridge events into a temporary SQS queue."""
@@ -86,12 +92,16 @@ class EventProbe:
             },
         )
 
-        # 3. Create the rule on the platform's bus matching our detail-types.
+        # 3. Create the rule on the platform's bus matching our detail-types, PLUS the
+        #    QA-only marker type used by the rule-is-live check below.
         self._events.put_rule(
             Name=self.rule_name,
             EventBusName=self._config.event_bus_name,
             EventPattern=json.dumps(
-                {"source": ["vericity.policy"], "detail-type": self.detail_types}
+                {
+                    "source": ["vericity.policy"],
+                    "detail-type": self.detail_types + [PROBE_READY_DETAIL_TYPE],
+                }
             ),
             State="ENABLED",
         )
@@ -122,19 +132,21 @@ class EventProbe:
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
             # Re-publish each loop: the first puts may be dropped while the rule is
-            # still propagating, so we keep nudging until one lands.
+            # still propagating, so we keep nudging until one lands. Markers use the
+            # QA-only detail-type so the platform's own rules never match them (a real
+            # detail-type here would trigger real consumers with junk payloads).
             self._events.put_events(
                 Entries=[
                     {
                         "Source": "vericity.policy",
-                        "DetailType": self.detail_types[0],
-                        "Detail": json.dumps({"probe_marker": marker, "policy_id": marker}),
+                        "DetailType": PROBE_READY_DETAIL_TYPE,
+                        "Detail": json.dumps({"probe_marker": marker}),
                         "EventBusName": self._config.event_bus_name,
                     }
                 ]
             )
             time.sleep(2)
-            for event in self._drain_once():
+            for event in self._drain_once(include_probe_markers=True):
                 detail = event.get("detail", {})
                 if isinstance(detail, str):
                     detail = json.loads(detail)
@@ -166,8 +178,13 @@ class EventProbe:
         except Exception:  # noqa: BLE001
             pass
 
-    def _drain_once(self) -> list[dict[str, Any]]:
-        """Read whatever events are currently in the probe queue (one batch poll)."""
+    def _drain_once(self, include_probe_markers: bool = False) -> list[dict[str, Any]]:
+        """Read whatever events are currently in the probe queue (one batch poll).
+
+        Probe-readiness markers are filtered out by default so tests only ever see
+        real platform events (and `wait_for_events(count=...)` counts stay accurate);
+        only the rule-is-live check itself asks to see them.
+        """
         captured: list[dict[str, Any]] = []
         response = self._sqs.receive_message(
             QueueUrl=self.queue_url,
@@ -176,8 +193,10 @@ class EventProbe:
         )
         for message in response.get("Messages", []):
             # EventBridge delivers the full event envelope as the SQS message body.
-            captured.append(json.loads(message["Body"]))
-            # Delete so we don't re-read it on the next poll.
+            envelope = json.loads(message["Body"])
+            if include_probe_markers or envelope.get("detail-type") != PROBE_READY_DETAIL_TYPE:
+                captured.append(envelope)
+            # Delete so we don't re-read it on the next poll (markers included).
             self._sqs.delete_message(
                 QueueUrl=self.queue_url, ReceiptHandle=message["ReceiptHandle"]
             )
